@@ -2,15 +2,15 @@ FROM golang:alpine
 
 WORKDIR /app
 
-COPY go.mod .
-COPY go.sum .
+COPY storage-service/go.mod .
+COPY storage-service/go.sum .
 RUN go mod download
 
-COPY . .
+COPY ./storage-service .
 
 RUN go build -o /goapp ./cmd/app
 
-EXPOSE 8000
+EXPOSE 7000
 
 CMD ["/goapp"]
 

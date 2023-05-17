@@ -3,8 +3,8 @@ package main
 import (
 	"github.com/caarlos0/env"
 	"log"
-	"post-api/config"
-	"post-api/internal/app"
+	"storage-service/config"
+	"storage-service/internal/app"
 )
 
 func main() {

@@ -2,50 +2,25 @@ package app
 
 import (
 	"log"
-	"post-api/config"
-	"post-api/internal/consumer"
-	"post-api/internal/model"
-	"post-api/internal/producer"
-	"sync"
-	"time"
+	"storage-service/config"
+	"storage-service/internal/consumer"
+	"storage-service/internal/db"
+	"storage-service/internal/handler"
+	"storage-service/internal/service"
 )
 
 func Run(cfg *config.Config) {
+	Migrate(cfg)
+	database := db.New(cfg)
 
-	log.Println("create kafka producer")
+	log.Println("Starting storage-service")
+	s := service.New(database)
+	h := handler.New(s)
+	log.Println("start kafka consumer")
+	c := consumer.New(cfg.KafkaAddr, s)
 
-	wg := sync.WaitGroup{}
-	p := producer.New(cfg.KafkaAddr)
-	//comment := model.CommentDTO{Text: "text", PostId: 1, Author: "Me", CreatedAt: time.Now()}
-	log.Println("send post.............")
-	post := model.PostDTO{Title: "title", Text: "text", Author: "author", CreatedAt: time.Now()}
-	wg.Add(1)
-	go func() {
-		for {
-			//err := p.SendComment(comment)
-			//if err != nil {
-			//	log.Fatal(err)
-			//}
-			log.Println("send post.............")
+	go c.HandlePost()
+	go c.HandleComment()
 
-			err := p.SendPost(post)
-
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			log.Println("send.......................")
-			time.Sleep(5 * time.Second)
-		}
-		wg.Done()
-	}()
-
-	log.Println("create kafka consumer")
-	c := consumer.New(cfg.KafkaAddr)
-
-	wg.Add(1)
-	go c.HandlePost(&wg)
-	//go h.HandleComment()
-
-	wg.Wait()
+	log.Fatal(serverRun(cfg.HttpPort, h.InitRoutes()))
 }

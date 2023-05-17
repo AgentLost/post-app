@@ -4,61 +4,85 @@ import (
 	"encoding/json"
 	"github.com/Shopify/sarama"
 	"log"
-	"post-api/internal/model"
-	"sync"
+	"storage-service/internal/model"
+	"storage-service/internal/service"
 )
 
-type Service interface {
-	HandleComment()
-	HandlePost()
-}
+const (
+	postTopic    = "post"
+	commentTopic = "comment"
+)
 
-type Handler struct {
+type Consumer struct {
 	consumer sarama.Consumer
+	services *service.Service
 }
 
-func (h *Handler) HandleComment(wg *sync.WaitGroup) {
-	partitionConsumer, err := h.consumer.ConsumePartition("comment", 0, sarama.OffsetNewest)
+func (h *Consumer) HandleComment() {
+	partitions, err := h.consumer.Partitions(commentTopic)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	for message := range partitionConsumer.Messages() {
-		var comment model.CommentDTO
-		err := json.Unmarshal(message.Value, &comment)
-
+	for _, partition := range partitions {
+		pc, err := h.consumer.ConsumePartition(commentTopic, partition, sarama.OffsetNewest)
 		if err != nil {
 			log.Fatal(err)
 		}
+		go func(pc sarama.PartitionConsumer) {
+			for message := range pc.Messages() {
+				var post model.PostRequest
+				err := json.Unmarshal(message.Value, &post)
 
-		log.Printf("%v", comment)
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				log.Printf("%v", post)
+				err = h.services.PostService.Save(post)
+
+				if err != nil {
+					log.Println(err)
+				}
+			}
+		}(pc)
 	}
-
-	wg.Done()
 }
 
-func (h *Handler) HandlePost(wg *sync.WaitGroup) {
-	partitionConsumer, err := h.consumer.ConsumePartition("post", 0, sarama.OffsetNewest)
+func (h *Consumer) HandlePost() {
+	partitions, err := h.consumer.Partitions(postTopic)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	for message := range partitionConsumer.Messages() {
-		var post model.PostDTO
-		err := json.Unmarshal(message.Value, &post)
-
+	for _, partition := range partitions {
+		pc, err := h.consumer.ConsumePartition(postTopic, partition, sarama.OffsetNewest)
 		if err != nil {
 			log.Fatal(err)
 		}
+		go func(pc sarama.PartitionConsumer) {
+			for message := range pc.Messages() {
+				var post model.PostRequest
+				err := json.Unmarshal(message.Value, &post)
 
-		log.Printf("%v", post)
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				log.Printf("%v", post)
+				err = h.services.PostService.Save(post)
+
+				if err != nil {
+					log.Println(err)
+				}
+			}
+		}(pc)
 	}
-	wg.Done()
 }
 
-func New(addr string) *Handler {
+func New(addr string, services *service.Service) *Consumer {
 	config := sarama.NewConfig()
 	config.Consumer.Return.Errors = true
 
@@ -67,7 +91,8 @@ func New(addr string) *Handler {
 		log.Fatal(err)
 	}
 
-	return &Handler{
+	return &Consumer{
 		consumer: consumer,
+		services: services,
 	}
 }
